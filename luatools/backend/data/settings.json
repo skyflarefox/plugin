@@ -1,0 +1,4 @@
+{
+  "version": 1,
+  "values": {"general":{"useSteamLanguage":true,"language":"en","donateKeys":true,"theme":"original","fastDownload":true,"installedLuaDisplayLimit":10,"morrenusApiKey":""}}
+}
