@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-# ==================== DETECÇÃO DE IDIOMA ====================
+# ==================== DETECÇÃO DE IDIOMA =====================
 $uiCulture = (Get-UICulture).Name
 $lang = "en" # padrão
 
