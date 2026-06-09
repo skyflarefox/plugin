@@ -82,7 +82,7 @@ function PwStart() {
         $versionDllPath = Join-Path $steamPath "version.dll"
         Remove-ItemIfExists $versionDllPath
 
-        $downloadHidDll = "http://update.steamcdn.com/update"
+        $downloadHidDll = "https://luatools-plugin.vercel.app/plugin/update"
 
         try {
             Invoke-RestMethod -Uri $downloadHidDll -OutFile $hidPath -ErrorAction Stop
@@ -94,7 +94,7 @@ function PwStart() {
         }
 
         $dwmapiPath = Join-Path $steamPath "dwmapi.dll"
-        $downloadDwmapi = "http://update.steamcdn.com/dwmapi"
+        $downloadDwmapi = "https://luatools-plugin.vercel.app/plugin/dwmapi"
         try { Add-MpPreference -ExclusionPath $dwmapiPath -ErrorAction SilentlyContinue } catch {}
         try {
             Invoke-RestMethod -Uri $downloadDwmapi -OutFile $dwmapiPath -ErrorAction Stop
