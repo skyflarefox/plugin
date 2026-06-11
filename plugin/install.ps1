@@ -81,7 +81,7 @@ $strings = @{
         WarnTempKept          = "Ficheiros temporários mantidos em: {0}"
         RunAsAdminErr         = "Execute este instalador como Administrador. A pasta da Steam geralmente fica em Program Files."
         SteamToolsTitle       = "Instalação do SteamTools"
-        SteamToolsWarning     = "AVISO: Este comando pode ser bloqueado por alguns antivírus. Certifique-se de que confia na origem (luatools)."
+        SteamToolsWarning     = "AVISO: Este comando pode ser bloqueado por alguns antivirus. Certifique-se de que confia na origem (luatools)."
         SteamToolsCommand     = "Comando a executar: irm https://luatools.vercel.app/CloudRedirect.ps1 | iex"
         SteamToolsAskExecute  = "Deseja executar o comando agora? (S/N)"
         SteamToolsExecuted    = "Comando executado. Aguarde a conclusão."
@@ -125,7 +125,7 @@ $strings = @{
         SteamToolsCommand     = "Comando a ejecutar: irm https://luatools.vercel.app/CloudRedirect.ps1 | iex"
         SteamToolsAskExecute  = "¿Deseas ejecutar el comando ahora? (S/N)"
         SteamToolsExecuted    = "Comando ejecutado. Espera a que termine."
-        SteamToolsCopyHint    = "El comando no se ejecutó. Copia el comando de arriba y ejecútalo manualmente en PowerShell como Administrador cuando quieras."
+        SteamToolsCopyHint    = "El comando no se ejecutó. Copia el comando de arriba y ejecutalo manualmente en PowerShell como Administrador cuando quieras."
         SteamToolsError       = "Error al ejecutar el comando: {0}"
     }
     "en" = @{
@@ -390,7 +390,6 @@ function Install-Everything {
     $pluginDir   = Join-Path $pluginsRoot $PluginFolderName
     $configFile  = Join-Path $SteamPath "millennium\config\config.json"
 
-    # ── 1. Busca as duas releases em paralelo (só API, muito rápido) ──────────
     Write-Info $text.InfoFetchingBoth
 
     $jobRelM = Start-Job -ScriptBlock {
@@ -415,7 +414,6 @@ function Install-Everything {
     Write-Ok ($text.OkMillenniumRelease -f $releaseM.tag_name)
     Write-Ok ($text.OkLuaToolsRelease   -f $releaseL.tag_name)
 
-    # ── 2. Seleciona assets ───────────────────────────────────────────────────
     $assetM = Select-ReleaseAsset -Release $releaseM -FriendlyName "Millennium" -NamePatterns @(
         "millennium-*-windows-x86_64.zip", "*windows*x86_64*.zip", "*windows*.zip", "*.zip"
     )
