@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $uiCulture = (Get-UICulture).Name
@@ -423,13 +423,10 @@ function Install-Everything {
         "ltsteamplugin.zip", "*ltsteamplugin*.zip", "*luatools*.zip", "*.zip"
     )
 
-    # ── 3. Para a Steam UMA VEZ antes dos downloads (não bloqueia a banda) ───
     Stop-Steam
 
-    # ── 4. Baixa os dois ZIPs em paralelo ────────────────────────────────────
     Invoke-ParallelDownloads -MillenniumUrl $assetM.browser_download_url -LuaToolsUrl $assetL.browser_download_url
 
-    # ── 5. Extrai os dois em paralelo ─────────────────────────────────────────
     Write-Info ($text.Extracting -f "Millennium + Luatools")
 
     foreach ($dir in @($MillenniumExtractTemp, $PluginExtractTemp)) {
@@ -452,7 +449,6 @@ function Install-Everything {
     Wait-Job $jobExM, $jobExL | Out-Null
     Remove-Job $jobExM, $jobExL -Force -ErrorAction SilentlyContinue
 
-    # ── 6. Copia Millennium ───────────────────────────────────────────────────
     $sourceM = Get-CopySourceFromExtractedZip -ExtractPath $MillenniumExtractTemp
     Write-Info $text.CopyingMillennium
     Copy-Item -Path (Join-Path $sourceM "*") -Destination $SteamPath -Recurse -Force
@@ -462,7 +458,6 @@ function Install-Everything {
     }
     Write-Ok $text.OkMillenniumInstalled
 
-    # ── 7. Instala Luatools ───────────────────────────────────────────────────
     if (-not (Test-Path $pluginsRoot)) { New-Item -Path $pluginsRoot -ItemType Directory -Force | Out-Null }
 
     Write-Info $text.RemovingOldPlugins
@@ -491,7 +486,6 @@ function Install-Everything {
     Enable-MillenniumPluginInConfig -ConfigFile $configFile -PluginId $PluginId
     Write-Ok ($text.OkLuaToolsInstalled -f $pluginDir)
 
-    # ── 8. Reinicia a Steam UMA VEZ no final ─────────────────────────────────
     Write-Info $text.RestartingSteam
     Restart-Steam -SteamPath $SteamPath
 
@@ -500,7 +494,6 @@ function Install-Everything {
     Write-Ok $text.OkEnableCmdSent
 }
 
-# ==================== STEAMTOOLS ====================
 function Install-SteamTools {
     Write-Info $text.InstallingSteamTools
 
@@ -556,7 +549,6 @@ function Cleanup-InstallerFiles {
     }
 }
 
-# ==================== EXECUÇÃO PRINCIPAL ====================
 try {
     Write-Host ""
     Write-Host "====================================================" -ForegroundColor Cyan
@@ -587,7 +579,6 @@ try {
         Write-Warn $text.WarnMillenniumMissing
     }
 
-    # Uma única função faz tudo: fetch → download paralelo → extração paralela → cópia → restart
     Install-Everything -SteamPath $steamPath
 
     Cleanup-InstallerFiles
