@@ -172,7 +172,6 @@ $strings = @{
 
 $text = $strings[$lang]
 
-# ==================== VARIÁVEIS PRINCIPAIS ====================
 $MillenniumRepo   = "SteamClientHomebrew/Millennium"
 $LuaToolsRepo     = "piqseu/ltsteamplugin"
 $PluginFolderName = "ltsteamplugin"
@@ -183,13 +182,11 @@ $MillenniumExtractTemp = Join-Path $WorkRoot "millennium_extract"
 $PluginZip            = Join-Path $WorkRoot "ltsteamplugin.zip"
 $PluginExtractTemp    = Join-Path $WorkRoot "ltsteamplugin_extract"
 
-# ==================== FUNÇÕES DE LOG ====================
 function Write-Info { param([string]$Message); Write-Host "[INFO] " -ForegroundColor Yellow -NoNewline; Write-Host $Message }
 function Write-Ok   { param([string]$Message); Write-Host "[OK] "   -ForegroundColor Green  -NoNewline; Write-Host $Message }
 function Write-Warn { param([string]$Message); Write-Host "[AVISO] " -ForegroundColor Yellow -NoNewline; Write-Host $Message }
 function Write-Err  { param([string]$Message); Write-Host "[ERRO] "  -ForegroundColor Red    -NoNewline; Write-Host $Message }
 
-# ==================== FUNÇÕES UTILITÁRIAS ====================
 function Test-IsAdmin {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -267,7 +264,6 @@ function Select-ReleaseAsset {
     throw "Nenhum asset compatível para $FriendlyName. Encontrados: $(($assets | Select-Object -ExpandProperty name) -join ', ')"
 }
 
-# ==================== STEAM ====================
 function Stop-Steam {
     $procs = Get-Process -Name "steam" -ErrorAction SilentlyContinue
     if (-not $procs) { return }
@@ -299,7 +295,6 @@ function Restart-Steam {
     Start-SteamClient -SteamPath $SteamPath
 }
 
-# ==================== DOWNLOAD PARALELO ====================
 function Get-CopySourceFromExtractedZip {
     param([string]$ExtractPath)
     $items = @(Get-ChildItem -Path $ExtractPath -Force)
@@ -315,7 +310,6 @@ function Invoke-ParallelDownloads {
 
     Write-Info $text.DownloadingBoth
 
-    # Dispara os dois downloads como background jobs simultâneos
     $jobM = Start-Job -ScriptBlock {
         param($url, $out)
         $ProgressPreference = "SilentlyContinue"
@@ -328,7 +322,6 @@ function Invoke-ParallelDownloads {
         Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
     } -ArgumentList $LuaToolsUrl, $PluginZip
 
-    # Aguarda ambos terminarem e propaga erros
     $results = Wait-Job $jobM, $jobL
     foreach ($job in $results) {
         if ($job.State -eq "Failed") {
