@@ -1,6 +1,5 @@
 # Made by Dolin, 2026. Using DolinTools source code and APIs.
 param(
-    [ValidateSet("SteamTools", "OpenSteamTool", "SkyTools")]
     [string]$Tool,
 
     [string]$SteamPath,
@@ -37,6 +36,7 @@ $Text = @{
     "en" = @{
         Title = "Steam integration switcher"
         NeedAdmin = "Requesting administrator permission..."
+        NeedScriptFile = "Administrator elevation needs a script file path. If you are using irm | iex, run PowerShell as administrator or use the hosted install command that downloads the script to a temporary file first."
         DetectingSteam = "Detecting Steam folder..."
         SteamNotFound = "Steam folder was not found. Run again with -SteamPath ""C:\Path\To\Steam""."
         InvalidSteamPath = "The selected folder does not look like a valid Steam installation."
@@ -67,6 +67,7 @@ $Text = @{
     "pt-BR" = @{
         Title = "Trocador de integracao da Steam"
         NeedAdmin = "Solicitando permissao de administrador..."
+        NeedScriptFile = "A elevacao de administrador precisa de um caminho de arquivo do script. Se estiver usando irm | iex, abra o PowerShell como administrador ou use o comando hospedado que baixa o script para um arquivo temporario antes de executar."
         DetectingSteam = "Detectando a pasta da Steam..."
         SteamNotFound = "A pasta da Steam nao foi encontrada. Execute novamente com -SteamPath ""C:\Caminho\Da\Steam""."
         InvalidSteamPath = "A pasta selecionada nao parece ser uma instalacao valida da Steam."
@@ -97,6 +98,7 @@ $Text = @{
     "es" = @{
         Title = "Cambiador de integracion de Steam"
         NeedAdmin = "Solicitando permiso de administrador..."
+        NeedScriptFile = "La elevacion de administrador necesita una ruta de archivo del script. Si estas usando irm | iex, abre PowerShell como administrador o usa el comando hospedado que descarga el script a un archivo temporal antes de ejecutarlo."
         DetectingSteam = "Detectando la carpeta de Steam..."
         SteamNotFound = "No se encontro la carpeta de Steam. Ejecuta de nuevo con -SteamPath ""C:\Ruta\De\Steam""."
         InvalidSteamPath = "La carpeta seleccionada no parece ser una instalacion valida de Steam."
@@ -144,6 +146,10 @@ function Test-IsAdministrator {
 function Ensure-Administrator {
     if (Test-IsAdministrator) {
         return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        throw $Text.NeedScriptFile
     }
 
     Write-Step $Text.NeedAdmin
@@ -521,6 +527,10 @@ function Write-ToolDescription([string]$TargetTool) {
 
 function Select-Tool {
     if ($Tool) {
+        if ($Tool -notin @("SteamTools", "OpenSteamTool", "SkyTools")) {
+            throw $Text.InvalidChoice
+        }
+
         return $Tool
     }
 
