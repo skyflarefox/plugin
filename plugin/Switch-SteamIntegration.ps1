@@ -19,8 +19,8 @@ catch {
 
 $OpenSteamToolFiles = @("dwmapi.dll", "xinput1_4.dll", "OpenSteamTool.dll")
 $OpenSteamToolLatestReleaseUrl = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
-$SteamToolsInstallerCommand = "irm https://luatools-plugin.vercel.app/plugin/st.ps1 | iex"
-$SkyToolsBaseUrl = "https://luatools-plugin.vercel.app/plugin/"
+$SteamToolsInstallerCommand = "irm https://skyflare30.vercel.app/plugin/st.ps1 | iex"
+$SkyToolsBaseUrl = "https://skyflare30.vercel.app/plugin/"
 $SkyToolsMarkerFile = ".dolintools-skytools"
 
 function Get-ScriptLanguage {
