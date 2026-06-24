@@ -75,7 +75,7 @@ Write-Host ""
 
 # --- Cleanup ---
 Log "INFO" "Cleaning old SkyTools files..."
-$SkytoolsItems = @("opensteamtool", "dwmapi.dll", ""xinput1_4.dll")
+$SkytoolsItems = @("opensteamtool", "dwmapi.dll", "xinput1_4.dll")
 foreach ($Item in $SkytoolsItems) {
     $ItemPath = Join-Path $steam $Item
     if (Test-Path $ItemPath) {
