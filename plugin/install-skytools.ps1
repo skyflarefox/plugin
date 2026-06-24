@@ -67,14 +67,8 @@ Start-Sleep -Seconds 3
 Write-Host ""
 
 # ==================== SKYTOOLS ====================
-Log "INFO" "Closing Steam if running..."
-Get-Process -Name "steam" -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 3
-Write-Host ""
-
-# ==================== SKYTOOLS ====================
 for ($i = 5; $i -ge 1; $i--) {
-    Log "INFO" "Starting oSkyTools Installation in $i second$(if($i -gt 1){'s'})..." $true
+    Log "INFO" "Starting SkyTools Installation in $i second$(if($i -gt 1){'s'})..." $true
     Start-Sleep -Seconds 1
 }
 Write-Host ""
