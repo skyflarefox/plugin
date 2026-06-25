@@ -6,7 +6,6 @@ $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | .gg/luatools"
 # ==================== CONFIGURATIONS ====================
 $name = "luatools"
 $link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/skytools.zip"
-Log "Found" "Plugin 8.0.5"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
@@ -68,7 +67,7 @@ function Find-SteamPath {
 
 $steam = Find-SteamPath
 $upperName = $name.Substring(0, 1).ToUpper() + $name.Substring(1).ToLower()
-
+Log "Found" "Plugin 8.0.5"
 # ==================== CLOSE STEAM ====================
 Log "INFO" "Closing Steam if running..."
 Get-Process -Name "steam" -ErrorAction SilentlyContinue | Stop-Process -Force
