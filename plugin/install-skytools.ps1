@@ -6,6 +6,7 @@ $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | .gg/luatools"
 # ==================== CONFIGURATIONS ====================
 $name = "luatools"
 $link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/skytools.zip"
+Log "Found" "Plugin 8.0.5"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
