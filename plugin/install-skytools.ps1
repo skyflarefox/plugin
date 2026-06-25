@@ -201,31 +201,32 @@ Write-Host ""
 Log "LOG" "Enabling plugin..."
 $configPath = Join-Path $steam "millennium/config/config.json"
 
-try {
-    if (-not (Test-Path $configPath)) {
-        $config = @{
-            plugins = @{ enabledPlugins = @($name) }
-            general = @{ checkForMillenniumUpdates = $false }
+if (-not (Test-Path $configPath)) {
+    $config = @{
+        plugins = @{ 
+            enabledPlugins = @($name) 
         }
-        New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
-        $config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8
-    } else {
-        $config = (Get-Content $configPath -Raw -Encoding UTF8) | ConvertFrom-Json
-        if (-not $config.general) { $config | Add-Member -NotePropertyName general -NotePropertyValue @{} }
-        $config.general.checkForMillenniumUpdates = $false
-        
-        if (-not $config.plugins) { $config | Add-Member -NotePropertyName plugins -NotePropertyValue @{} }
-        if (-not $config.plugins.enabledPlugins) { $config.plugins | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue @() }
-        
-        if ($config.plugins.enabledPlugins -notcontains $name) {
-            $config.plugins.enabledPlugins += $name
-        }
-        $config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8
     }
-    Log "OK" "Plugin enabled"
-} catch {
-    Log "WARN" "Could not configure plugin: $($_.Exception.Message)"
+    New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
+    $config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8
+} 
+else {
+    $config = (Get-Content $configPath -Raw -Encoding UTF8) | ConvertFrom-Json
+
+    if (-not $config.plugins) { 
+        $config | Add-Member -NotePropertyName plugins -NotePropertyValue @{} 
+    }
+    if (-not $config.plugins.enabledPlugins) { 
+        $config.plugins | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue @() 
+    }
+    if ($config.plugins.enabledPlugins -notcontains $name) {
+        $config.plugins.enabledPlugins += $name
+    }
+
+    $config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8
 }
+
+Log "OK" "Plugin enabled"
 Write-Host ""
 
 # ==================== FINAL CLEANUP ====================
