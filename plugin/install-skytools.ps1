@@ -6,7 +6,7 @@ $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | .gg/luatools"
 
 # ==================== CONFIGURATIONS ====================
 $name = "luatools"
-$link = "https://github.com/JuniorSantana93/files/raw/refs/heads/main/luatools.zip"
+$link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/skytools.zip"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
