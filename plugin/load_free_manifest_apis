@@ -12,12 +12,5 @@
             "success_code": 200,
             "unavailable_code": 404,
             "enabled": true
-        },
-        {
-            "name": "Ryuu",
-            "url": "http://167.235.229.108/<appid>",
-            "success_code": 200,
-            "unavailable_code": 404,
-            "enabled": true
         }
     ],
