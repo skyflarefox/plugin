@@ -4,7 +4,7 @@
 $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | https://discord.gg/J9nGjBWxJA"
 
 # ==================== CONFIGURATIONS ====================
-$name = "skytools"
+$name = "skytools-plugin"
 $link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/skytools.zip"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
