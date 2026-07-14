@@ -4,7 +4,7 @@
 $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | .gg/luatools"
 
 # ==================== CONFIGURATIONS ====================
-$name = "luatools"
+$name = "Skytools"
 $link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/skytools.zip"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -159,9 +159,9 @@ try {
 }
 Write-Host ""
 
-# ==================== LUATOOLS ====================
+# ==================== Skytools ====================
 for ($i = 5; $i -ge 1; $i--) {
-    Log "INFO" "Starting LuaTools Installation in $i second$(if($i -gt 1){'s'})..." $true
+    Log "INFO" "Starting Skytools Installation in $i second$(if($i -gt 1){'s'})..." $true
     Start-Sleep -Seconds 1
 }
 Write-Host ""
@@ -175,7 +175,7 @@ if (Test-Path $LuaToolsPath) {
 }
 
 $tempZip = Join-Path $env:TEMP "luatools.zip"
-Log "LOG" "Downloading LuaTools..."
+Log "LOG" "Downloading Skytools..."
 try {
     Invoke-WebRequest -Uri $link -OutFile $tempZip -TimeoutSec 30 -ErrorAction Stop
     Log "OK" "Download completed"
@@ -186,11 +186,11 @@ try {
         Log "INFO" "Plugins folder created"
     }
 
-    Log "LOG" "Extracting LuaTools to plugins folder..."
+    Log "LOG" "Extracting Skytools to plugins folder..."
     Expand-Archive -Path $tempZip -DestinationPath $pluginsFolder -Force -ErrorAction Stop
     Log "OK" "$upperName installed successfully"
 } catch {
-    Log "ERR" "Failed to install LuaTools: $($_.Exception.Message)"
+    Log "ERR" "Failed to install Skytools: $($_.Exception.Message)"
     exit 1
 } finally {
     if (Test-Path $tempZip) { Remove-Item $tempZip -Force -ErrorAction SilentlyContinue }
