@@ -67,7 +67,7 @@ function Find-SteamPath {
 
 $steam = Find-SteamPath
 $upperName = $name.Substring(0, 1).ToUpper() + $name.Substring(1).ToLower()
-Log "Found" "Plugin 1.0.0"
+Log "Found" "Plugin 1.0.1"
 # ==================== CLOSE STEAM ====================
 Log "INFO" "Closing Steam if running..."
 Get-Process -Name "steam" -ErrorAction SilentlyContinue | Stop-Process -Force
