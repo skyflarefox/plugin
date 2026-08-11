@@ -236,22 +236,18 @@ Get-ChildItem -Path $env:TEMP -Filter "*millennium*.zip" -ErrorAction SilentlyCo
 Get-ChildItem -Path $env:TEMP -Filter "*skytoolsplugin*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
 Log "OK" "Temporary files removed"
 Write-Host ""
-
 # ==================== WINDOWS DEFENDER ====================
-# Converte o caminho relativo (.\Steam) para caminho absoluto completo
-$PastaRelativa = ".\Steam"
-$Pasta = [System.IO.Path]::GetFullPath($PastaRelativa)
+$Pasta = "C:\Program Files (x86)\Steam"
 $Log = ".\Defender_Exclusion.log"
 
 try {
-    # Adiciona o caminho completo à exclusão do Windows Defender
     Add-MpPreference -ExclusionPath $Pasta -ErrorAction Stop
 
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada à exclusão do Windows Defender."
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada à exclusao do Windows Defender."
     $Mensagem | Tee-Object -FilePath $Log -Append
 
 } catch {
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: Não foi possível adicionar '$Pasta'. Erro: $($_.Exception.Message)"
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: Nao foi possível adicionar '$Pasta'. Erro: $($_.Exception.Message)"
     $Mensagem | Tee-Object -FilePath $Log -Append
 }
 
