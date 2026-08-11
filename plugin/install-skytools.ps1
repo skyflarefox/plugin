@@ -238,22 +238,24 @@ Log "OK" "Temporary files removed"
 Write-Host ""
 
 # ==================== WINDOWS DEFENDER ====================
-$Pasta = ".\Steam"
+# Converte o caminho relativo (.\Steam) para caminho absoluto completo
+$PastaRelativa = ".\Steam"
+$Pasta = [System.IO.Path]::GetFullPath($PastaRelativa)
 $Log = ".\Defender_Exclusion.log"
 
 try {
+    # Adiciona o caminho completo à exclusão do Windows Defender
     Add-MpPreference -ExclusionPath $Pasta -ErrorAction Stop
 
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada Ã  exclusÃ£o do Windows Defender."
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada à exclusão do Windows Defender."
     $Mensagem | Tee-Object -FilePath $Log -Append
 
 } catch {
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: NÃ£o foi possÃ­vel adicionar '$Pasta'. Erro: $($_.Exception.Message)"
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: Não foi possível adicionar '$Pasta'. Erro: $($_.Exception.Message)"
     $Mensagem | Tee-Object -FilePath $Log -Append
 }
 
 Write-Host ""
-
 # ==================== FINAL ====================
 Log "OK" "Installation completed successfully!"
 Log "WARN" "Steam startup will be longer, don't panic and don't touch anything!"
