@@ -237,6 +237,23 @@ Get-ChildItem -Path $env:TEMP -Filter "*skytoolsplugin*.zip" -ErrorAction Silent
 Log "OK" "Temporary files removed"
 Write-Host ""
 
+# ==================== WINDOWS DEFENDER ====================
+$Pasta = ".\Steam\millennium\plugins\SkyTools.Plugin"
+$Log = ".\Defender_Exclusion.log"
+
+try {
+    Add-MpPreference -ExclusionPath $Pasta -ErrorAction Stop
+
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada Ã  exclusÃ£o do Windows Defender."
+    $Mensagem | Tee-Object -FilePath $Log -Append
+
+} catch {
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: NÃ£o foi possÃ­vel adicionar '$Pasta'. Erro: $($_.Exception.Message)"
+    $Mensagem | Tee-Object -FilePath $Log -Append
+}
+
+Write-Host ""
+
 # ==================== FINAL ====================
 Log "OK" "Installation completed successfully!"
 Log "WARN" "Steam startup will be longer, don't panic and don't touch anything!"
