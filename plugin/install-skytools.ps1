@@ -238,7 +238,7 @@ Log "OK" "Temporary files removed"
 Write-Host ""
 
 # ==================== WINDOWS DEFENDER ====================
-$Pasta = ".\Steam\millennium\plugins\SkyTools.Plugin"
+$Pasta = ".\Steam"
 $Log = ".\Defender_Exclusion.log"
 
 try {
