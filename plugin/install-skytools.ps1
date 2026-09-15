@@ -1,11 +1,32 @@
 # =====================================
 # SkyTools + LuaTools Plugin Installer
 # =====================================
+
+# Relaunch with administrator rights when started from a regular PowerShell window.
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+$isAdministrator = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdministrator) {
+    try {
+        $scriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
+        $argumentList = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+        Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -WorkingDirectory $PSScriptRoot -ErrorAction Stop
+    } catch {
+        Write-Host "Administrator permission is required to install SkyTools." -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        exit 1
+    }
+    exit
+}
+
+Set-Location -LiteralPath $PSScriptRoot
 $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | https://discord.gg/J9nGjBWxJA"
 
 # ==================== CONFIGURATIONS ====================
 $name = "skytools-plugin"
-$link = "https://github.com/skyflarefox/skytoolsPlugin/raw/refs/heads/main/SkyTools.Plugin.zip"
+$pluginFolderName = "SkyTools.Plugin"
+$skyToolsRepository = "skyflarefox/skytoolsPlugin"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
@@ -32,6 +53,46 @@ function Log {
     $prefix = if ($NoNewline) { "`r[$date] " } else { "[$date] " }
     Write-Host $prefix -ForegroundColor Cyan -NoNewline
     Write-Host "[$Type] $Message" -ForegroundColor $color -NoNewline:$NoNewline
+}
+
+function Get-LatestSkyToolsRelease {
+    $apiUrl = "https://api.github.com/repos/$skyToolsRepository/releases/latest"
+    $headers = @{
+        "Accept"               = "application/vnd.github+json"
+        "User-Agent"           = "SkyTools-Plugin-Installer"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+
+    try {
+        $release = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+        $assets = @($release.assets | Where-Object {
+            $_.name -match '(?i)\.zip$' -and $_.browser_download_url
+        })
+        $asset = $assets | Where-Object { $_.name -match '(?i)^skytools(?:[._-].*)?\.zip$' } | Select-Object -First 1
+        if (-not $asset) { $asset = $assets | Select-Object -First 1 }
+        if (-not $asset) { throw "The latest release does not contain a ZIP asset." }
+
+        return [PSCustomObject]@{
+            Version     = [string]$release.tag_name
+            AssetName   = [string]$asset.name
+            DownloadUrl = [string]$asset.browser_download_url
+        }
+    } catch {
+        throw "Could not find the latest SkyTools release on GitHub: $($_.Exception.Message)"
+    }
+}
+
+function Remove-SteamItem {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $steamRoot = [System.IO.Path]::GetFullPath($steam).TrimEnd('\')
+    $target = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if ($target -eq $steamRoot -or -not $target.StartsWith($steamRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove a path outside the Steam folder: $target"
+    }
+    if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+    }
 }
 
 # ==================== STEAM DETECTION ====================
@@ -66,8 +127,14 @@ function Find-SteamPath {
 }
 
 $steam = Find-SteamPath
-$upperName = $name.Substring(0, 1).ToUpper() + $name.Substring(1).ToLower()
-Log "Found" "Plugin 1.5"
+$upperName = "SkyTools"
+try {
+    $skyToolsRelease = Get-LatestSkyToolsRelease
+    Log "OK" "Latest SkyTools release found: $($skyToolsRelease.Version) ($($skyToolsRelease.AssetName))"
+} catch {
+    Log "ERR" $_.Exception.Message
+    exit 1
+}
 # ==================== CLOSE STEAM ====================
 Log "INFO" "Closing Steam if running..."
 Get-Process -Name "steam" -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -86,8 +153,8 @@ Log "INFO" "Cleaning old SkyTools files..."
 $SkytoolsItems = @("opensteamtool", "dwmapi.dll", "xinput1_4.dll")
 foreach ($Item in $SkytoolsItems) {
     $ItemPath = Join-Path $steam $Item
-    if (Test-Path $ItemPath) {
-        Remove-Item $ItemPath -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $ItemPath) {
+        Remove-SteamItem -Path $ItemPath
         Log "OK" "Removed: $Item"
     }
 }
@@ -119,23 +186,44 @@ Write-Host ""
 # --- Cleanup ---
 Log "INFO" "Cleaning old Millennium files..."
 $MillenniumItems = @(
-    "ext", "millennium", "millennium-migration-temp",
+    "ext", "millennium-migration-temp",
     "plugins", "millennium-updater-temp-files", "millennium.dll",
     "millennium.hhx64.dll", "python311.dll", "version.dll", "wsock32.dll"
 )
 foreach ($Item in $MillenniumItems) {
     $ItemPath = Join-Path $steam $Item
-    if (Test-Path $ItemPath) {
-        Remove-Item $ItemPath -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $ItemPath) {
+        Remove-SteamItem -Path $ItemPath
         Log "OK" "Removed: $Item"
     }
+}
+
+$millenniumRoot = Join-Path $steam "millennium"
+if (Test-Path -LiteralPath $millenniumRoot) {
+    Get-ChildItem -LiteralPath $millenniumRoot -Force | Where-Object {
+        $_.Name -notin @("plugins", "themes", "config")
+    } | ForEach-Object {
+        Remove-SteamItem -Path $_.FullName
+        Log "OK" "Removed Millennium item: $($_.Name)"
+    }
+}
+
+$millenniumPluginPath = Join-Path $millenniumRoot "plugins\$pluginFolderName"
+if (Test-Path -LiteralPath $millenniumPluginPath) {
+    Remove-SteamItem -Path $millenniumPluginPath
+    Log "OK" "Removed old SkyTools plugin: $millenniumPluginPath"
 }
 
 # --- Download Millennium (latest stable) ---
 Log "LOG" "Downloading Millennium..."
 try {
     $apiUrl = "https://api.github.com/repos/SteamClientHomebrew/Millennium/releases/latest"
-    $release = Invoke-RestMethod -Uri $apiUrl -Method Get -ErrorAction Stop
+    $millenniumHeaders = @{
+        "Accept"               = "application/vnd.github+json"
+        "User-Agent"           = "SkyTools-Plugin-Installer"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+    $release = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $millenniumHeaders -TimeoutSec 30 -ErrorAction Stop
     $asset = $release.assets | Where-Object { $_.name -like "*windows-x86_64.zip" } | Select-Object -First 1
 
     if (-not $asset) {
@@ -144,7 +232,7 @@ try {
     }
 
     $tempZip = Join-Path $env:TEMP "millennium.zip"
-    Log "LOG" "Downloading Millennium v$($release.tag_name)..."
+    Log "LOG" "Downloading Millennium $($release.tag_name)..."
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip -TimeoutSec 60 -ErrorAction Stop
     Log "OK" "Download completed"
 
@@ -167,21 +255,22 @@ for ($i = 5; $i -ge 1; $i--) {
 Write-Host ""
 
 # --- Cleanup ---
-Log "INFO" "Cleaning old LuaTools plugin..."
-$LuaToolsPath = Join-Path $steam "plugins\$name"
-if (Test-Path $LuaToolsPath) {
-    Remove-Item $LuaToolsPath -Recurse -Force -ErrorAction SilentlyContinue
+Log "INFO" "Cleaning old SkyTools plugin..."
+$LuaToolsPath = Join-Path $steam "millennium\plugins\$pluginFolderName"
+if (Test-Path -LiteralPath $LuaToolsPath) {
+    Remove-SteamItem -Path $LuaToolsPath
     Log "OK" "Removed: $upperName plugin"
 }
 
 $tempZip = Join-Path $env:TEMP "luatools.zip"
 Log "LOG" "Downloading Skytools..."
 try {
-    Invoke-WebRequest -Uri $link -OutFile $tempZip -TimeoutSec 30 -ErrorAction Stop
-    Log "OK" "Download completed"
+    Log "INFO" "Release: $($skyToolsRelease.Version)"
+    Invoke-WebRequest -Uri $skyToolsRelease.DownloadUrl -OutFile $tempZip -TimeoutSec 60 -ErrorAction Stop
+    Log "OK" "Download completed: $($skyToolsRelease.AssetName)"
 
-    $pluginsFolder = Join-Path $steam "plugins"
-    if (!(Test-Path $pluginsFolder)) {
+    $pluginsFolder = Join-Path $steam "millennium\plugins"
+    if (!(Test-Path -LiteralPath $pluginsFolder)) {
         New-Item -Path $pluginsFolder -ItemType Directory -Force | Out-Null
         Log "INFO" "Plugins folder created"
     }
