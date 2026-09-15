@@ -8,11 +8,34 @@ $currentPrincipal = New-Object Security.Principal.WindowsPrincipal($currentIdent
 $isAdministrator = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdministrator) {
+    $temporaryElevationScript = $false
     try {
-        $scriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
+        $workingDirectory = (Get-Location).Path
+        if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
+            # `irm <url> | iex` has no script path. Persist the in-memory script
+            # temporarily so Windows can relaunch it through UAC.
+            $scriptPath = Join-Path $env:TEMP ("install-skytools-elevated-{0}.ps1" -f [Guid]::NewGuid().ToString("N"))
+            $temporaryElevationScript = $true
+            $scriptContent = [string]$MyInvocation.MyCommand.Definition
+            if ([string]::IsNullOrWhiteSpace($scriptContent)) {
+                throw "The installer content could not be prepared for administrator mode."
+            }
+            [System.IO.File]::WriteAllText(
+                $scriptPath,
+                $scriptContent,
+                (New-Object System.Text.UTF8Encoding($true)))
+        } else {
+            $scriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
+            if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+                $workingDirectory = $PSScriptRoot
+            }
+        }
         $argumentList = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-        Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -WorkingDirectory $PSScriptRoot -ErrorAction Stop
+        Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -WorkingDirectory $workingDirectory -ErrorAction Stop
     } catch {
+        if ($temporaryElevationScript -and $scriptPath -and (Test-Path -LiteralPath $scriptPath)) {
+            Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+        }
         Write-Host "Administrator permission is required to install SkyTools." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
         exit 1
@@ -20,7 +43,9 @@ if (-not $isAdministrator) {
     exit
 }
 
-Set-Location -LiteralPath $PSScriptRoot
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    Set-Location -LiteralPath $PSScriptRoot
+}
 $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | https://discord.gg/J9nGjBWxJA"
 
 # ==================== CONFIGURATIONS ====================
@@ -348,6 +373,9 @@ $exe = Join-Path $steam "steam.exe"
 Start-Process $exe -ArgumentList "-clearbeta"
 Log "INFO" "Starting Steam..."
 Write-Host ""
+if ($PSCommandPath -and [System.IO.Path]::GetFileName($PSCommandPath) -like "install-skytools-elevated-*.ps1") {
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+}
 Log "INFO" "Press any key to close this window..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 exit
