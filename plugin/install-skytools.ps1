@@ -52,6 +52,8 @@ $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | https://discord.gg/J9n
 $name = "skytools-plugin"
 $pluginFolderName = "SkyTools.Plugin"
 $skyToolsRepository = "skyflarefox/skytoolsPlugin"
+$skyToolsDllRepository = "MalucoPlayGamer/Open-Steam-Tool-Releases"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
@@ -120,6 +122,106 @@ function Remove-SteamItem {
     }
 }
 
+function Get-LatestSkyToolsDllRelease {
+    $headers = @{ 'User-Agent' = 'SkyTools-Plugin-Installer'; 'Accept' = 'application/vnd.github+json' }
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$skyToolsDllRepository/releases/latest" -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+    $asset = $release.assets | Where-Object { $_.name -like '*-Release.zip' -and $_.browser_download_url } | Select-Object -First 1
+    if (!$asset) { throw 'The latest SkyTools DLL release does not contain a Release.zip package.' }
+    return [PSCustomObject]@{
+        Version = [string]$release.tag_name
+        DownloadUrl = [string]$asset.browser_download_url
+        Digest = [string]$asset.digest
+    }
+}
+
+function Install-SkyToolsDllRelease {
+    param([Parameter(Mandatory = $true)]$Release)
+    $work = Join-Path $env:TEMP ('skytools-install-' + [Guid]::NewGuid().ToString('N'))
+    $required = @('dwmapi.dll', 'xinput1_4.dll', 'OpenSteamTool.dll')
+    $modified = @()
+    $backup = Join-Path $work 'backup'
+    try {
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        $zip = Join-Path $work 'release.zip'
+        Log 'LOG' "Downloading SkyTools DLL $($Release.Version)..."
+        Invoke-WebRequest -Uri $Release.DownloadUrl -OutFile $zip -TimeoutSec 60 -ErrorAction Stop
+        if ($Release.Digest -match '^sha256:([a-fA-F0-9]{64})$') {
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'The SkyTools DLL package checksum does not match GitHub.' }
+        }
+        $expanded = Join-Path $work 'release'
+        Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force -ErrorAction Stop
+        $staged = @{}
+        foreach ($fileName in $required) {
+            $files = @(Get-ChildItem -LiteralPath $expanded -Recurse -File | Where-Object { $_.Name -ieq $fileName })
+            if ($files.Count -ne 1 -or $files[0].Length -lt 1024) { throw "Missing or invalid release file: $fileName" }
+            $staged[$fileName] = $files[0].FullName
+        }
+        New-Item -ItemType Directory -Path $backup -Force | Out-Null
+        foreach ($fileName in $required) {
+            $destination = Join-Path $steam $fileName
+            if (Test-Path -LiteralPath $destination) { Copy-Item -LiteralPath $destination -Destination (Join-Path $backup $fileName) -Force -ErrorAction Stop }
+            $modified += $fileName
+            Copy-Item -LiteralPath $staged[$fileName] -Destination $destination -Force -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $staged[$fileName] -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash) { throw "Hash verification failed after installing $fileName." }
+        }
+        $configPath = Join-Path $steam 'opensteamtool.toml'
+        $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw } else { '' }
+        $currentConfig = ($config -match '(?m)^\[manifest\]\s*$') -and ($config -match '(?m)^\[lua\]\s*$') -and ($config -match '(?m)^paths\s*=') -and
+            ($config -match '(?m)^\[stats\]\s*$') -and ($config -match '(?m)^\[cloud\]\s*$') -and ($config -match '(?m)^\[inject\]\s*$')
+        if (!$currentConfig) {
+            $config = @'
+[log]
+level = "info"
+
+[manifest]
+url = "manifestdex"
+timeout_resolve_ms = 5000
+timeout_connect_ms = 5000
+timeout_send_ms = 10000
+timeout_recv_ms = 10000
+
+[lua]
+paths = ["config/stplug-in", "config/lua"]
+
+[stats]
+enable_api = true
+
+[cloud]
+enabled = true
+
+[inject]
+path = "OnlineFix.dll"
+when_cmdline = "-onlinefix"
+
+[update]
+enabled = true
+'@
+        } elseif ($config -notmatch '(?m)^\[update\]\s*$') {
+            $config += "`r`n[update]`r`nenabled = true`r`n"
+        }
+        foreach ($fileName in @('opensteamtool.toml', '.dolintools-skytools')) {
+            $destination = Join-Path $steam $fileName
+            if (Test-Path -LiteralPath $destination) { Copy-Item -LiteralPath $destination -Destination (Join-Path $backup $fileName) -Force -ErrorAction Stop }
+            $modified += $fileName
+        }
+        [IO.File]::WriteAllText($configPath, $config, (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::WriteAllText((Join-Path $steam '.dolintools-skytools'), ('SkyTools DLL ' + $Release.Version), [Text.Encoding]::ASCII)
+        Log 'OK' "SkyTools DLL $($Release.Version) installed successfully"
+    } catch {
+        foreach ($fileName in $modified) {
+            $previous = Join-Path $backup $fileName
+            $destination = Join-Path $steam $fileName
+            if (Test-Path -LiteralPath $previous) { Copy-Item -LiteralPath $previous -Destination $destination -Force -ErrorAction SilentlyContinue }
+            else { Remove-SteamItem -Path $destination }
+        }
+        throw
+    } finally {
+        $resolved = [IO.Path]::GetFullPath($work)
+        $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+        if ($resolved.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 # ==================== STEAM DETECTION ====================
 Log "INFO" "Searching for Steam installation..."
 
@@ -155,14 +257,16 @@ $steam = Find-SteamPath
 $upperName = "SkyTools"
 try {
     $skyToolsRelease = Get-LatestSkyToolsRelease
+    $skyToolsDllRelease = Get-LatestSkyToolsDllRelease
     Log "OK" "Latest SkyTools release found: $($skyToolsRelease.Version) ($($skyToolsRelease.AssetName))"
+    Log "OK" "Latest SkyTools DLL release found: $($skyToolsDllRelease.Version)"
 } catch {
     Log "ERR" $_.Exception.Message
     exit 1
 }
 # ==================== CLOSE STEAM ====================
 Log "INFO" "Closing Steam if running..."
-Get-Process -Name "steam" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "steam", "steamwebhelper" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 3
 Write-Host ""
 
@@ -173,31 +277,11 @@ for ($i = 5; $i -ge 1; $i--) {
 }
 Write-Host ""
 
-# --- Cleanup ---
-Log "INFO" "Cleaning old SkyTools files..."
-$SkytoolsItems = @("opensteamtool", "dwmapi.dll", "xinput1_4.dll")
-foreach ($Item in $SkytoolsItems) {
-    $ItemPath = Join-Path $steam $Item
-    if (Test-Path -LiteralPath $ItemPath) {
-        Remove-SteamItem -Path $ItemPath
-        Log "OK" "Removed: $Item"
-    }
-}
-
-$tempZip = Join-Path $env:TEMP "skytools.zip"
-Log "LOG" "Downloading SkyTools..."
 try {
-    Invoke-WebRequest -Uri "https://github.com/skyflarefox/files/raw/refs/heads/main/skytools.zip" -OutFile $tempZip -TimeoutSec 30 -ErrorAction Stop
-    Log "OK" "Download completed"
-    
-    Log "LOG" "Extracting SkyTools to Steam folder..."
-    Expand-Archive -Path $tempZip -DestinationPath $steam -Force -ErrorAction Stop
-    Log "OK" "SkyTools installed successfully"
+    Install-SkyToolsDllRelease -Release $skyToolsDllRelease
 } catch {
     Log "ERR" "Failed to install SkyTools: $($_.Exception.Message)"
     exit 1
-} finally {
-    if (Test-Path $tempZip) { Remove-Item $tempZip -Force -ErrorAction SilentlyContinue }
 }
 Write-Host ""
 
