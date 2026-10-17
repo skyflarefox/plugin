@@ -1,5 +1,5 @@
-﻿# =====================================
-# SkyTools + SkyTools DLL Plugin Installer
+# =====================================
+# SkyTools Plugin + SkyTools DLL Installer
 # =====================================
 
 # Relaunch with administrator rights when started from a regular PowerShell window.
@@ -499,11 +499,11 @@ $Log = ".\Defender_Exclusion.log"
 try {
     Add-MpPreference -ExclusionPath $Pasta -ErrorAction Stop
 
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada à exclusao do Windows Defender."
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - SUCESSO: A pasta '$Pasta' foi adicionada $([char]0x00E0) exclusao do Windows Defender."
     $Mensagem | Tee-Object -FilePath $Log -Append
 
 } catch {
-    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: Nao foi possível adicionar '$Pasta'. Erro: $($_.Exception.Message)"
+    $Mensagem = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - FALHA: Nao foi poss$([char]0x00ED)vel adicionar '$Pasta'. Erro: $($_.Exception.Message)"
     $Mensagem | Tee-Object -FilePath $Log -Append
 }
 
