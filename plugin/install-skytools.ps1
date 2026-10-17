@@ -1,5 +1,5 @@
-# =====================================
-# SkyTools + LuaTools Plugin Installer
+﻿# =====================================
+# SkyTools + SkyTools DLL Plugin Installer
 # =====================================
 
 # Relaunch with administrator rights when started from a regular PowerShell window.
@@ -52,11 +52,12 @@ $Host.UI.RawUI.WindowTitle = "Skytools Plugin Installer | https://discord.gg/J9n
 $name = "skytools-plugin"
 $pluginFolderName = "SkyTools.Plugin"
 $skyToolsRepository = "skyflarefox/skytoolsPlugin"
-$skyToolsDllRepository = "MalucoPlayGamer/Open-Steam-Tool-Releases"
+$skyToolsDllRepository = "MalucoPlayGamer/GreenTools"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 > $null
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $ProgressPreference = 'SilentlyContinue'
 
@@ -134,91 +135,121 @@ function Get-LatestSkyToolsDllRelease {
     }
 }
 
+function Set-SkyToolsTomlDefault([string]$Text, [string]$Section, [string]$Key, [string]$Value) {
+    $pattern = '(?ms)^[ \t]*\[' + [regex]::Escape($Section) + '\][ \t]*(?:#[^\r\n]*)?(?:\r?\n|\z)(?<body>.*?)(?=^[ \t]*\[|\z)'
+    $block = [regex]::Match($Text,$pattern)
+    if (!$block.Success) { return $Text.TrimEnd() + "`r`n`r`n[$Section]`r`n$Key = $Value`r`n" }
+    if ($block.Groups['body'].Value -match ('(?m)^\s*' + [regex]::Escape($Key) + '\s*=')) { return $Text }
+    $prefix = if ($block.Value.EndsWith("`n")) { '' } else { "`r`n" }
+    return $Text.Insert($block.Index + $block.Length,"$prefix$Key = $Value`r`n")
+}
+
 function Install-SkyToolsDllRelease {
     param([Parameter(Mandatory = $true)]$Release)
     $work = Join-Path $env:TEMP ('skytools-install-' + [Guid]::NewGuid().ToString('N'))
-    $required = @('dwmapi.dll', 'xinput1_4.dll', 'OpenSteamTool.dll')
-    $modified = @()
+    $required = @('GreenTools.dll','version.dll','winmm.dll')
+    $legacy = @('dwmapi.dll','xinput1_4.dll','OpenSteamTool.dll')
+    $tracked = @($required + $legacy + @('greentools.toml','greentools\greentools.toml','opensteamtool.toml','.dolintools-skytools'))
     $backup = Join-Path $work 'backup'
+    $previousFiles = @{}; $modified = $false; $rollbackFailed = $false
+    $steamRoot = [IO.Path]::GetFullPath($steam).TrimEnd('\')
+    function Assert-SkyToolsTarget([string]$Path) {
+        $target = [IO.Path]::GetFullPath($Path)
+        if (!$target.StartsWith($steamRoot + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid Steam target.' }
+        $current = $target
+        while ($current) {
+            if ((Test-Path -LiteralPath $current) -and (Get-Item -LiteralPath $current -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "Refusing a linked Steam target: $current" }
+            if ($current -eq $steamRoot) { break }
+            $current = Split-Path $current -Parent
+        }
+    }
     try {
+        foreach ($relative in $tracked) { Assert-SkyToolsTarget (Join-Path $steamRoot $relative) }
+        $expectedUrl = 'https://github.com/MalucoPlayGamer/GreenTools/releases/download/'
+        if (!$Release.DownloadUrl.StartsWith($expectedUrl,[StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid GreenTools download URL.' }
         New-Item -ItemType Directory -Path $work -Force | Out-Null
         $zip = Join-Path $work 'release.zip'
-        Log 'LOG' "Downloading SkyTools DLL $($Release.Version)..."
-        Invoke-WebRequest -Uri $Release.DownloadUrl -OutFile $zip -TimeoutSec 60 -ErrorAction Stop
+        Log 'LOG' "Downloading GreenTools $($Release.Version)..."
+        Invoke-WebRequest -Uri $Release.DownloadUrl -OutFile $zip -TimeoutSec 90 -UseBasicParsing -ErrorAction Stop
+        if ((Get-Item -LiteralPath $zip).Length -gt 128MB) { throw 'The DLL package exceeds the size limit.' }
         if ($Release.Digest -match '^sha256:([a-fA-F0-9]{64})$') {
             if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'The SkyTools DLL package checksum does not match GitHub.' }
         }
-        $expanded = Join-Path $work 'release'
-        Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force -ErrorAction Stop
-        $staged = @{}
-        foreach ($fileName in $required) {
-            $files = @(Get-ChildItem -LiteralPath $expanded -Recurse -File | Where-Object { $_.Name -ieq $fileName })
-            if ($files.Count -ne 1 -or $files[0].Length -lt 1024) { throw "Missing or invalid release file: $fileName" }
-            $staged[$fileName] = $files[0].FullName
+        $staged = @{}; $hashes = @{}
+        $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+        try {
+            foreach ($fileName in $required) {
+                $files = @($archive.Entries | Where-Object { $_.Name -ieq $fileName })
+                if ($files.Count -ne 1 -or $files[0].Length -lt 64 -or $files[0].Length -gt 64MB) { throw "Missing or invalid release file: $fileName" }
+                $destination = Join-Path $work $fileName
+                $sourceStream = $files[0].Open(); $output = [IO.File]::Create($destination)
+                try { $sourceStream.CopyTo($output) } finally { $sourceStream.Dispose(); $output.Dispose() }
+                $stream = [IO.File]::OpenRead($destination)
+                try { if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw "Invalid DLL: $fileName" } } finally { $stream.Dispose() }
+                $staged[$fileName] = $destination
+                $hashes[$fileName] = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+            }
+        } finally { $archive.Dispose() }
+        $configPath = Join-Path $steamRoot 'greentools.toml'
+        if (Test-Path -LiteralPath (Join-Path $steamRoot 'greentools\greentools.toml')) { $configPath = Join-Path $steamRoot 'greentools\greentools.toml' }
+        $oldConfig = Join-Path $steamRoot 'opensteamtool.toml'
+        $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 }
+            elseif (Test-Path -LiteralPath $oldConfig) { Get-Content -LiteralPath $oldConfig -Raw -Encoding UTF8 } else { '' }
+        $defaults = @(
+            @('log','level','"info"'), @('manifest','url','"manifestdex"'),
+            @('manifest','timeout_resolve_ms','5000'), @('manifest','timeout_connect_ms','5000'),
+            @('manifest','timeout_send_ms','10000'), @('manifest','timeout_recv_ms','10000'),
+            @('lua','paths','["config/stplug-in", "config/lua"]'), @('stats','enable_api','true'),
+            @('cloud','enabled','true'), @('inject','path','"OnlineFix.dll"'), @('inject','when_cmdline','"-onlinefix"'),
+            @('update','enabled','true'), @('cef','enable_debugging','true'), @('cef','devtools_port','27183'))
+        foreach ($item in $defaults) { $config = Set-SkyToolsTomlDefault $config $item[0] $item[1] $item[2] }
+        [IO.Directory]::CreateDirectory($backup) | Out-Null
+        foreach ($relative in $tracked) {
+            $path = Join-Path $steamRoot $relative
+            $previousFiles[$relative] = Test-Path -LiteralPath $path -PathType Leaf
+            if ($previousFiles[$relative]) {
+                $previous = Join-Path $backup $relative
+                [IO.Directory]::CreateDirectory((Split-Path $previous -Parent)) | Out-Null
+                Copy-Item -LiteralPath $path -Destination $previous -Force -ErrorAction Stop
+            }
         }
-        New-Item -ItemType Directory -Path $backup -Force | Out-Null
+        foreach ($loader in @('version.dll','winmm.dll')) {
+            $path = Join-Path $steamRoot $loader; $savedLoader = $path + '.dolintools-greentools.orig'
+            Assert-SkyToolsTarget $savedLoader
+            if (!(Test-Path -LiteralPath (Join-Path $steamRoot 'GreenTools.dll')) -and (Test-Path -LiteralPath $path) -and !(Test-Path -LiteralPath $savedLoader)) { Copy-Item -LiteralPath $path -Destination $savedLoader -ErrorAction Stop }
+        }
+        $modified = $true
         foreach ($fileName in $required) {
-            $destination = Join-Path $steam $fileName
-            if (Test-Path -LiteralPath $destination) { Copy-Item -LiteralPath $destination -Destination (Join-Path $backup $fileName) -Force -ErrorAction Stop }
-            $modified += $fileName
+            $destination = Join-Path $steamRoot $fileName
+            if (Test-Path -LiteralPath $destination) { [IO.File]::SetAttributes($destination,[IO.FileAttributes]::Normal) }
             Copy-Item -LiteralPath $staged[$fileName] -Destination $destination -Force -ErrorAction Stop
-            if ((Get-FileHash -LiteralPath $staged[$fileName] -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash) { throw "Hash verification failed after installing $fileName." }
+            if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hashes[$fileName]) { throw "Hash verification failed after installing $fileName." }
         }
-        $configPath = Join-Path $steam 'opensteamtool.toml'
-        $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw } else { '' }
-        $currentConfig = ($config -match '(?m)^\[manifest\]\s*$') -and ($config -match '(?m)^\[lua\]\s*$') -and ($config -match '(?m)^paths\s*=') -and
-            ($config -match '(?m)^\[stats\]\s*$') -and ($config -match '(?m)^\[cloud\]\s*$') -and ($config -match '(?m)^\[inject\]\s*$')
-        if (!$currentConfig) {
-            $config = @'
-[log]
-level = "info"
-
-[manifest]
-url = "manifestdex"
-timeout_resolve_ms = 5000
-timeout_connect_ms = 5000
-timeout_send_ms = 10000
-timeout_recv_ms = 10000
-
-[lua]
-paths = ["config/stplug-in", "config/lua"]
-
-[stats]
-enable_api = true
-
-[cloud]
-enabled = true
-
-[inject]
-path = "OnlineFix.dll"
-when_cmdline = "-onlinefix"
-
-[update]
-enabled = true
-'@
-        } elseif ($config -notmatch '(?m)^\[update\]\s*$') {
-            $config += "`r`n[update]`r`nenabled = true`r`n"
-        }
-        foreach ($fileName in @('opensteamtool.toml', '.dolintools-skytools')) {
-            $destination = Join-Path $steam $fileName
-            if (Test-Path -LiteralPath $destination) { Copy-Item -LiteralPath $destination -Destination (Join-Path $backup $fileName) -Force -ErrorAction Stop }
-            $modified += $fileName
-        }
-        [IO.File]::WriteAllText($configPath, $config, (New-Object Text.UTF8Encoding($false)))
-        [IO.File]::WriteAllText((Join-Path $steam '.dolintools-skytools'), ('SkyTools DLL ' + $Release.Version), [Text.Encoding]::ASCII)
-        Log 'OK' "SkyTools DLL $($Release.Version) installed successfully"
+        [IO.Directory]::CreateDirectory((Split-Path $configPath -Parent)) | Out-Null
+        [IO.File]::WriteAllText($configPath,$config,[Text.UTF8Encoding]::new($false))
+        foreach ($fileName in $legacy) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
+        Remove-SteamItem $oldConfig
+        [IO.File]::WriteAllText((Join-Path $steamRoot '.dolintools-skytools'),('GreenTools ' + $Release.Version),[Text.Encoding]::ASCII)
+        Log 'OK' "GreenTools $($Release.Version) installed successfully"
+        return @{ repository='MalucoPlayGamer/GreenTools'; version=$Release.Version; hashes=$hashes }
     } catch {
-        foreach ($fileName in $modified) {
-            $previous = Join-Path $backup $fileName
-            $destination = Join-Path $steam $fileName
-            if (Test-Path -LiteralPath $previous) { Copy-Item -LiteralPath $previous -Destination $destination -Force -ErrorAction SilentlyContinue }
-            else { Remove-SteamItem -Path $destination }
+        if ($modified) {
+            foreach ($relative in $tracked) {
+                $destination = Join-Path $steamRoot $relative
+                try {
+                    Remove-SteamItem $destination
+                    if ($previousFiles[$relative]) {
+                        [IO.Directory]::CreateDirectory((Split-Path $destination -Parent)) | Out-Null
+                        Copy-Item -LiteralPath (Join-Path $backup $relative) -Destination $destination -Force -ErrorAction Stop
+                    }
+                } catch { $rollbackFailed = $true; Log 'ERR' "Rollback failed for $relative. Backup retained at: $backup" }
+            }
         }
         throw
     } finally {
         $resolved = [IO.Path]::GetFullPath($work)
         $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
-        if ($resolved.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue }
+        if (!$rollbackFailed -and $resolved.StartsWith($tempPrefix,[StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
 
@@ -241,7 +272,7 @@ function Find-SteamPath {
     $DefaultPath = "C:\Program Files (x86)\Steam"
     if (Test-Path $DefaultPath) { $PossiblePaths += $DefaultPath }
 
-    $PossiblePaths = $PossiblePaths | Select-Object -Unique | Where-Object { Test-Path $_ }
+    $PossiblePaths = @($PossiblePaths | Select-Object -Unique | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'steam.exe') -PathType Leaf })
 
     if ($PossiblePaths.Count -eq 0) {
         Log "ERR" "Steam installation not found. Please install Steam first."
@@ -277,14 +308,6 @@ for ($i = 5; $i -ge 1; $i--) {
 }
 Write-Host ""
 
-try {
-    Install-SkyToolsDllRelease -Release $skyToolsDllRelease
-} catch {
-    Log "ERR" "Failed to install SkyTools: $($_.Exception.Message)"
-    exit 1
-}
-Write-Host ""
-
 # ==================== MILLENNIUM ====================
 for ($i = 5; $i -ge 1; $i--) {
     Log "INFO" "Starting Millennium Installation in $i second$(if($i -gt 1){'s'})..." $true
@@ -296,7 +319,7 @@ Write-Host ""
 Log "INFO" "Cleaning old Millennium files..."
 $MillenniumItems = @(
     "ext", "millennium-migration-temp",
-    "plugins", "millennium-updater-temp-files", "millennium.dll",
+    "millennium-updater-temp-files", "millennium.dll",
     "millennium.hhx64.dll", "python311.dll", "version.dll", "wsock32.dll"
 )
 foreach ($Item in $MillenniumItems) {
@@ -317,6 +340,16 @@ if (Test-Path -LiteralPath $millenniumRoot) {
     }
 }
 
+$skyToolsPreservedData = Join-Path $env:TEMP ('skytools-user-data-' + [Guid]::NewGuid().ToString('N'))
+$skyToolsWasInstalled = Test-Path -LiteralPath (Join-Path $millenniumRoot "plugins\$pluginFolderName\plugin.json")
+$existingData = Join-Path $millenniumRoot "plugins\$pluginFolderName\data"
+if (Test-Path -LiteralPath $existingData) {
+    New-Item -ItemType Directory -Path $skyToolsPreservedData -Force | Out-Null
+    Get-ChildItem -LiteralPath $existingData -Force | Where-Object {
+        $_.Name -notmatch '^(skytools-hidden-console|temp$|jobs$|drop-uploads$|launchers$)' -and $_.Extension -ne '.ps1'
+    } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $skyToolsPreservedData -Recurse -Force -ErrorAction Stop }
+    Log 'INFO' "Preserving SkyTools settings and backups: $skyToolsPreservedData"
+}
 $millenniumPluginPath = Join-Path $millenniumRoot "plugins\$pluginFolderName"
 if (Test-Path -LiteralPath $millenniumPluginPath) {
     Remove-SteamItem -Path $millenniumPluginPath
@@ -340,9 +373,9 @@ try {
         throw "Asset not found."
     }
 
-    $tempZip = Join-Path $env:TEMP "millennium.zip"
+    $tempZip = Join-Path $env:TEMP ("millennium-{0}.zip" -f [Guid]::NewGuid().ToString("N"))
     Log "LOG" "Downloading Millennium $($release.tag_name)..."
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip -TimeoutSec 60 -ErrorAction Stop
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
     Log "OK" "Download completed"
 
     Log "LOG" "Extracting Millennium to Steam folder..."
@@ -371,11 +404,11 @@ if (Test-Path -LiteralPath $LuaToolsPath) {
     Log "OK" "Removed: $upperName plugin"
 }
 
-$tempZip = Join-Path $env:TEMP "luatools.zip"
+$tempZip = Join-Path $env:TEMP ("skytoolsplugin-{0}.zip" -f [Guid]::NewGuid().ToString("N"))
 Log "LOG" "Downloading Skytools..."
 try {
     Log "INFO" "Release: $($skyToolsRelease.Version)"
-    Invoke-WebRequest -Uri $skyToolsRelease.DownloadUrl -OutFile $tempZip -TimeoutSec 60 -ErrorAction Stop
+    Invoke-WebRequest -Uri $skyToolsRelease.DownloadUrl -OutFile $tempZip -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
     Log "OK" "Download completed: $($skyToolsRelease.AssetName)"
 
     $pluginsFolder = Join-Path $steam "millennium\plugins"
@@ -394,6 +427,29 @@ try {
     if (Test-Path $tempZip) { Remove-Item $tempZip -Force -ErrorAction SilentlyContinue }
 }
 Write-Host ""
+
+$installedPlugin = Join-Path $steam "millennium\plugins\$pluginFolderName"
+$installedData = Join-Path $installedPlugin 'data'
+try {
+    if (!(Test-Path -LiteralPath (Join-Path $installedPlugin 'plugin.json'))) { throw 'The package does not contain SkyTools.Plugin/plugin.json.' }
+    [IO.Directory]::CreateDirectory($installedData) | Out-Null
+    if (Test-Path -LiteralPath $skyToolsPreservedData) {
+        Get-ChildItem -LiteralPath $skyToolsPreservedData -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $installedData -Recurse -Force -ErrorAction Stop }
+    }
+    if ($skyToolsWasInstalled) {
+        $manifestPath = Join-Path $installedPlugin 'plugin.json'
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($null -eq $manifest.PSObject.Properties['firstRunNotice']) { $manifest | Add-Member -NotePropertyName firstRunNotice -NotePropertyValue $false }
+        else { $manifest.firstRunNotice = $false }
+        [IO.File]::WriteAllText($manifestPath,($manifest | ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+    }
+    $installedDlls = Install-SkyToolsDllRelease -Release $skyToolsDllRelease
+    [IO.File]::WriteAllText((Join-Path $installedData 'skytools-dll-integrity.json'),($installedDlls | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $installedData 'skytools-greentools-1.7-migrated.txt'),$skyToolsDllRelease.Version,[Text.Encoding]::ASCII)
+} catch {
+    Log 'ERR' "Failed to finish the SkyTools installation: $($_.Exception.Message)"
+    exit 1
+}
 
 # ==================== ENABLE PLUGIN ====================
 Log "LOG" "Enabling plugin..."
@@ -414,11 +470,11 @@ else {
     if (-not $config.plugins) { 
         $config | Add-Member -NotePropertyName plugins -NotePropertyValue @{} 
     }
-    if (-not $config.plugins.enabledPlugins) { 
+    if ($null -eq $config.plugins.PSObject.Properties["enabledPlugins"]) { 
         $config.plugins | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue @() 
     }
     if ($config.plugins.enabledPlugins -notcontains $name) {
-        $config.plugins.enabledPlugins += $name
+        $config.plugins.enabledPlugins = @($config.plugins.enabledPlugins) + @($name)
     }
 
     $config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8
@@ -429,13 +485,15 @@ Write-Host ""
 
 # ==================== FINAL CLEANUP ====================
 Log "INFO" "Cleaning temporary files..."
-Get-ChildItem -Path $env:TEMP -Filter "*skytools*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
-Get-ChildItem -Path $env:TEMP -Filter "*millennium*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
-Get-ChildItem -Path $env:TEMP -Filter "*skytoolsplugin*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
+if (Test-Path -LiteralPath $skyToolsPreservedData) {
+    $resolvedData = [IO.Path]::GetFullPath($skyToolsPreservedData)
+    $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    if ($resolvedData.StartsWith($tempPrefix,[StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $resolvedData -Recurse -Force }
+}
 Log "OK" "Temporary files removed"
 Write-Host ""
 # ==================== WINDOWS DEFENDER ====================
-$Pasta = "C:\Program Files (x86)\Steam"
+$Pasta = $steam
 $Log = ".\Defender_Exclusion.log"
 
 try {
