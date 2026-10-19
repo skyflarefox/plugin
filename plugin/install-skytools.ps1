@@ -123,6 +123,49 @@ function Remove-SteamItem {
     }
 }
 
+function Get-SkyToolsSteamProcesses([string]$SteamPath) {
+    $prefix = [IO.Path]::GetFullPath($SteamPath).TrimEnd('\') + '\'
+    $criticalNames = @('steam', 'steamwebhelper', 'gameoverlayui', 'millennium.crashhandler64', 'millennium.luavm64')
+    foreach ($process in @(Get-Process -Name @('steam', 'steamwebhelper', 'gameoverlayui', 'millennium*') -ErrorAction SilentlyContinue)) {
+        if ($process.Id -eq $PID) { continue }
+        try { if ($process.HasExited) { continue } } catch { }
+        $executable = $null
+        try { $executable = $process.Path } catch { }
+        if ($executable) {
+            if ([IO.Path]::GetFullPath($executable).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $process }
+        } elseif ($criticalNames -contains $process.ProcessName) {
+            # An inaccessible critical process must never be mistaken for an exited one.
+            $process
+        }
+    }
+}
+
+function Stop-SkyToolsSteam {
+    param([string]$SteamPath, [string]$FailureMessage = 'Steam or Millennium did not close. No integration files were changed.', [int]$MaxAttempts = 120)
+    $quietChecks = 0
+    for ($attempt = 0; $attempt -lt $MaxAttempts; $attempt++) {
+        $processes = @(Get-SkyToolsSteamProcesses $SteamPath)
+        if ($processes.Count -eq 0) {
+            $quietChecks++
+            # Confirm a full second with no respawned Steam or Millennium process.
+            if ($quietChecks -ge 5) { return }
+        } else {
+            $quietChecks = 0
+            foreach ($process in $processes) {
+                try { Stop-Process -InputObject $process -Force -ErrorAction Stop } catch { }
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    throw $FailureMessage
+}
+
+function Assert-SkyToolsSteamStopped([string]$SteamPath) {
+    if (@(Get-SkyToolsSteamProcesses $SteamPath).Count -gt 0) {
+        throw 'Steam or Millennium started again before the DLL replacement finished.'
+    }
+}
+
 function Get-LatestSkyToolsDllRelease {
     $headers = @{ 'User-Agent' = 'SkyTools-Plugin-Installer'; 'Accept' = 'application/vnd.github+json' }
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$skyToolsDllRepository/releases/latest" -Headers $headers -TimeoutSec 30 -ErrorAction Stop
@@ -216,6 +259,7 @@ function Install-SkyToolsDllRelease {
         }
         $modified = $true
         foreach ($fileName in $required) {
+            Assert-SkyToolsSteamStopped $steamRoot
             $destination = Join-Path $steamRoot $fileName
             if (Test-Path -LiteralPath $destination) { [IO.File]::SetAttributes($destination,[IO.FileAttributes]::Normal) }
             Copy-Item -LiteralPath $staged[$fileName] -Destination $destination -Force -ErrorAction Stop
@@ -223,6 +267,7 @@ function Install-SkyToolsDllRelease {
         }
         [IO.Directory]::CreateDirectory((Split-Path $configPath -Parent)) | Out-Null
         [IO.File]::WriteAllText($configPath,$config,[Text.UTF8Encoding]::new($false))
+        Assert-SkyToolsSteamStopped $steamRoot
         foreach ($fileName in $legacy) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
         Remove-SteamItem $oldConfig
         [IO.File]::WriteAllText((Join-Path $steamRoot '.dolintools-skytools'),('GreenTools ' + $Release.Version),[Text.Encoding]::ASCII)
@@ -294,8 +339,7 @@ try {
 }
 # ==================== CLOSE STEAM ====================
 Log "INFO" "Closing Steam if running..."
-Get-Process -Name "steam", "steamwebhelper" -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 3
+try { Stop-SkyToolsSteam -SteamPath $steam } catch { Log 'ERR' $_.Exception.Message; exit 1 }
 Write-Host ""
 
 # ==================== SKYTOOLS ====================
