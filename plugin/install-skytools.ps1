@@ -147,8 +147,9 @@ function Set-SkyToolsTomlDefault([string]$Text, [string]$Section, [string]$Key, 
 function Install-SkyToolsDllRelease {
     param([Parameter(Mandatory = $true)]$Release)
     $work = Join-Path $env:TEMP ('skytools-install-' + [Guid]::NewGuid().ToString('N'))
-    $required = @('GreenTools.dll','version.dll','winmm.dll')
-    $legacy = @('dwmapi.dll','xinput1_4.dll','OpenSteamTool.dll')
+    $required = @('GreenTools.dll','wsock32.dll','winmm.dll')
+    $legacy = @('dwmapi.dll','xinput1_4.dll','OpenSteamTool.dll','version.dll')
+    $obsoleteBackups = @('wsock32.dll.dolintools-greentools.orig','winmm.dll.dolintools-greentools.orig','version.dll.dolintools-greentools.orig')
     $tracked = @($required + $legacy + @('greentools.toml','greentools\greentools.toml','opensteamtool.toml','.dolintools-skytools'))
     $backup = Join-Path $work 'backup'
     $previousFiles = @{}; $modified = $false; $rollbackFailed = $false
@@ -164,7 +165,7 @@ function Install-SkyToolsDllRelease {
         }
     }
     try {
-        foreach ($relative in $tracked) { Assert-SkyToolsTarget (Join-Path $steamRoot $relative) }
+        foreach ($relative in @($tracked + $obsoleteBackups)) { Assert-SkyToolsTarget (Join-Path $steamRoot $relative) }
         $expectedUrl = 'https://github.com/MalucoPlayGamer/GreenTools/releases/download/'
         if (!$Release.DownloadUrl.StartsWith($expectedUrl,[StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid GreenTools download URL.' }
         New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -213,11 +214,6 @@ function Install-SkyToolsDllRelease {
                 Copy-Item -LiteralPath $path -Destination $previous -Force -ErrorAction Stop
             }
         }
-        foreach ($loader in @('version.dll','winmm.dll')) {
-            $path = Join-Path $steamRoot $loader; $savedLoader = $path + '.dolintools-greentools.orig'
-            Assert-SkyToolsTarget $savedLoader
-            if (!(Test-Path -LiteralPath (Join-Path $steamRoot 'GreenTools.dll')) -and (Test-Path -LiteralPath $path) -and !(Test-Path -LiteralPath $savedLoader)) { Copy-Item -LiteralPath $path -Destination $savedLoader -ErrorAction Stop }
-        }
         $modified = $true
         foreach ($fileName in $required) {
             $destination = Join-Path $steamRoot $fileName
@@ -230,6 +226,7 @@ function Install-SkyToolsDllRelease {
         foreach ($fileName in $legacy) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
         Remove-SteamItem $oldConfig
         [IO.File]::WriteAllText((Join-Path $steamRoot '.dolintools-skytools'),('GreenTools ' + $Release.Version),[Text.Encoding]::ASCII)
+        foreach ($fileName in $obsoleteBackups) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
         Log 'OK' "GreenTools $($Release.Version) installed successfully"
         return @{ repository='MalucoPlayGamer/GreenTools'; version=$Release.Version; hashes=$hashes }
     } catch {
