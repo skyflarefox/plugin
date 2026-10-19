@@ -166,6 +166,27 @@ function Assert-SkyToolsSteamStopped([string]$SteamPath) {
     }
 }
 
+function Test-SkyToolsLegacyLoader([string]$Path) {
+    if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $length = (Get-Item -LiteralPath $Path).Length
+    if ($length -lt 64 -or $length -gt 8MB) { return $false }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    foreach ($encoding in @([Text.Encoding]::UTF8, [Text.Encoding]::Unicode)) {
+        $text = $encoding.GetString($bytes)
+        foreach ($module in @('GreenTools.dll', 'OpenSteamTool.dll')) {
+            if ($text.IndexOf($module, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-SkyToolsFileHash([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+
 function Get-LatestSkyToolsDllRelease {
     $headers = @{ 'User-Agent' = 'SkyTools-Plugin-Installer'; 'Accept' = 'application/vnd.github+json' }
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$skyToolsDllRepository/releases/latest" -Headers $headers -TimeoutSec 30 -ErrorAction Stop
@@ -193,7 +214,7 @@ function Install-SkyToolsDllRelease {
     $required = @('GreenTools.dll','wsock32.dll','winmm.dll')
     $legacy = @('dwmapi.dll','xinput1_4.dll','OpenSteamTool.dll','version.dll')
     $obsoleteBackups = @('wsock32.dll.dolintools-greentools.orig','winmm.dll.dolintools-greentools.orig','version.dll.dolintools-greentools.orig')
-    $tracked = @($required + $legacy + @('greentools.toml','greentools\greentools.toml','opensteamtool.toml','.dolintools-skytools'))
+    $tracked = @($required + $legacy + @('millennium-legacy.version.dll','greentools.toml','greentools\greentools.toml','opensteamtool.toml','.dolintools-skytools'))
     $backup = Join-Path $work 'backup'
     $previousFiles = @{}; $modified = $false; $rollbackFailed = $false
     $steamRoot = [IO.Path]::GetFullPath($steam).TrimEnd('\')
@@ -217,7 +238,7 @@ function Install-SkyToolsDllRelease {
         Invoke-WebRequest -Uri $Release.DownloadUrl -OutFile $zip -TimeoutSec 90 -UseBasicParsing -ErrorAction Stop
         if ((Get-Item -LiteralPath $zip).Length -gt 128MB) { throw 'The DLL package exceeds the size limit.' }
         if ($Release.Digest -match '^sha256:([a-fA-F0-9]{64})$') {
-            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'The SkyTools DLL package checksum does not match GitHub.' }
+            if ((Get-SkyToolsFileHash $zip) -ne $Matches[1]) { throw 'The SkyTools DLL package checksum does not match GitHub.' }
         }
         $staged = @{}; $hashes = @{}
         $archive = [IO.Compression.ZipFile]::OpenRead($zip)
@@ -231,7 +252,7 @@ function Install-SkyToolsDllRelease {
                 $stream = [IO.File]::OpenRead($destination)
                 try { if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw "Invalid DLL: $fileName" } } finally { $stream.Dispose() }
                 $staged[$fileName] = $destination
-                $hashes[$fileName] = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+                $hashes[$fileName] = (Get-SkyToolsFileHash $destination)
             }
         } finally { $archive.Dispose() }
         $configPath = Join-Path $steamRoot 'greentools.toml'
@@ -263,12 +284,14 @@ function Install-SkyToolsDllRelease {
             $destination = Join-Path $steamRoot $fileName
             if (Test-Path -LiteralPath $destination) { [IO.File]::SetAttributes($destination,[IO.FileAttributes]::Normal) }
             Copy-Item -LiteralPath $staged[$fileName] -Destination $destination -Force -ErrorAction Stop
-            if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hashes[$fileName]) { throw "Hash verification failed after installing $fileName." }
+            if ((Get-SkyToolsFileHash $destination) -ne $hashes[$fileName]) { throw "Hash verification failed after installing $fileName." }
         }
         [IO.Directory]::CreateDirectory((Split-Path $configPath -Parent)) | Out-Null
         [IO.File]::WriteAllText($configPath,$config,[Text.UTF8Encoding]::new($false))
         Assert-SkyToolsSteamStopped $steamRoot
         foreach ($fileName in $legacy) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
+        $storedVersion = Join-Path $steamRoot 'millennium-legacy.version.dll'
+        if (Test-SkyToolsLegacyLoader $storedVersion) { Remove-SteamItem $storedVersion }
         Remove-SteamItem $oldConfig
         [IO.File]::WriteAllText((Join-Path $steamRoot '.dolintools-skytools'),('GreenTools ' + $Release.Version),[Text.Encoding]::ASCII)
         foreach ($fileName in $obsoleteBackups) { Remove-SteamItem (Join-Path $steamRoot $fileName) }
